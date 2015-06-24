@@ -1,6 +1,6 @@
 // Ol3-Cesium. See https://github.com/openlayers/ol3-cesium/
 // License: https://github.com/openlayers/ol3-cesium/blob/master/LICENSE
-// Version: v1.2
+// Version: v1.2-17-gd6c588d
 
 var CLOSURE_NO_DEPS = true;
 // Copyright 2006 The Closure Library Authors. All Rights Reserved.
@@ -10817,6 +10817,54 @@ goog.require('olcs.core.OlLayerPrimitive');
    */
   olcs.core.glAliasedLineWidthRange = -1;
 
+
+  /**
+   * Compute the pixel width and height of a point in meters using the
+   * camera frustum.
+   * @param {!Cesium.Scene} scene
+   * @param {!Cesium.Cartesian3} target
+   * @return {!Cesium.Cartesian2} the pixel size
+   * @api
+   */
+  olcs.core.computePixelSizeAtCoordinate = function(scene, target) {
+    var camera = scene.camera;
+    var canvas = scene.canvas;
+    var frustum = camera.frustum;
+    var canvasDimensions = new Cesium.Cartesian2(canvas.width, canvas.height);
+    var distance = Cesium.Cartesian3.magnitude(Cesium.Cartesian3.subtract(
+        camera.position, target, new Cesium.Cartesian3()));
+    var pixelSize = frustum.getPixelSize(canvasDimensions, distance);
+    return pixelSize;
+  };
+
+
+  /**
+   * Compute bounding box around a target point.
+   * @param {!Cesium.Scene} scene
+   * @param {!Cesium.Cartesian3} target
+   * @param {number} amount Half the side of the box, in pixels.
+   * @return {Array<Cesium.Cartographic>} bottom left and top right
+   * coordinates of the box
+   */
+  olcs.core.computeBoundingBoxAtTarget = function(scene, target, amount) {
+    var pixelSize = olcs.core.computePixelSizeAtCoordinate(scene, target);
+    var transform = Cesium.Transforms.eastNorthUpToFixedFrame(target);
+
+    var bottomLeft = Cesium.Matrix4.multiplyByPoint(
+        transform,
+        new Cesium.Cartesian3(-pixelSize.x * amount, -pixelSize.y * amount, 0),
+        new Cesium.Cartesian3());
+
+    var topRight = Cesium.Matrix4.multiplyByPoint(
+        transform,
+        new Cesium.Cartesian3(pixelSize.x * amount, pixelSize.y * amount, 0),
+        new Cesium.Cartesian3());
+
+    return Cesium.Ellipsoid.WGS84.cartesianArrayToCartographicArray(
+        [bottomLeft, topRight]);
+  };
+
+
   /**
    *
    * @param {!ol.geom.Geometry} geometry
@@ -10865,9 +10913,9 @@ goog.require('olcs.core.OlLayerPrimitive');
       camera.transform.clone(oldTransform);
       var stepAngle = (progress - lastProgress) * angle;
       lastProgress = progress;
-      camera.setTransform(transform);
+      camera.lookAtTransform(transform);
       camera.rotate(axis, stepAngle);
-      camera.setTransform(oldTransform);
+      camera.lookAtTransform(oldTransform);
 
       if (progress < 1) {
         animation.start();
@@ -10908,9 +10956,22 @@ goog.require('olcs.core.OlLayerPrimitive');
   };
 
 
+  /**
+   * Get the 3D position of the given pixel of the canvas.
+   * @param {!Cesium.Scene} scene
+   * @param {!Cesium.Cartesian2} pixel
+   * @return {!Cesium.Cartesian3|undefined}
+   * @api
+   */
+  olcs.core.pickOnTerrainOrEllipsoid = function(scene, pixel) {
+    var ray = scene.camera.getPickRay(pixel);
+    var target = scene.globe.pick(ray, scene);
+    return target || scene.camera.pickEllipsoid(pixel);
+  };
+
 
   /**
-   * Get 3D positiion of the point at the bottom-center of the screen.
+   * Get the 3D position of the point at the bottom-center of the screen.
    * @param {!Cesium.Scene} scene
    * @return {!Cesium.Cartesian3|undefined}
    * @api
@@ -10918,30 +10979,20 @@ goog.require('olcs.core.OlLayerPrimitive');
   olcs.core.pickBottomPoint = function(scene) {
     var canvas = scene.canvas;
     var bottom = new Cesium.Cartesian2(canvas.width / 2, canvas.height);
-    var ray = scene.camera.getPickRay(bottom);
-    var target = scene.globe.pick(ray, scene);
-    if (!target) {
-      target = scene.camera.pickEllipsoid(bottom);
-    }
-    return target;
+    return olcs.core.pickOnTerrainOrEllipsoid(scene, bottom);
   };
 
 
   /**
-   * Get 3D positiion of the point at the center of the screen.
+   * Get the 3D position of the point at the center of the screen.
    * @param {!Cesium.Scene} scene
    * @return {!Cesium.Cartesian3|undefined}
    * @api
    */
   olcs.core.pickCenterPoint = function(scene) {
     var canvas = scene.canvas;
-    var bottom = new Cesium.Cartesian2(canvas.width / 2, canvas.height / 2);
-    var ray = scene.camera.getPickRay(bottom);
-    var target = scene.globe.pick(ray, scene);
-    if (!target) {
-      target = scene.camera.pickEllipsoid(bottom);
-    }
-    return target;
+    var center = new Cesium.Cartesian2(canvas.width / 2, canvas.height / 2);
+    return olcs.core.pickOnTerrainOrEllipsoid(scene, center);
   };
 
 
@@ -18462,11 +18513,14 @@ olcs.OLCesium.prototype.getEnabled = function() {
 /**
  * Enables/disables the Cesium.
  * This modifies the visibility style of the container element.
- * @param {boolean=} opt_enable
+ * @param {boolean} enable
  * @api
  */
-olcs.OLCesium.prototype.setEnabled = function(opt_enable) {
-  this.enabled_ = opt_enable !== false;
+olcs.OLCesium.prototype.setEnabled = function(enable) {
+  if (this.enabled_ == enable) {
+    return;
+  }
+  this.enabled_ = enable;
 
   // some Cesium operations are operating with canvas.clientWidth,
   // so we can't remove it from DOM or even make display:none;
@@ -19992,6 +20046,10 @@ goog.exportProperty(
     olcs.Camera.prototype.updateView);
 
 goog.exportSymbol(
+    'olcs.core.computePixelSizeAtCoordinate',
+    olcs.core.computePixelSizeAtCoordinate);
+
+goog.exportSymbol(
     'olcs.core.applyHeightOffsetToGeometry',
     olcs.core.applyHeightOffsetToGeometry);
 
@@ -20002,6 +20060,10 @@ goog.exportSymbol(
 goog.exportSymbol(
     'olcs.core.setHeadingUsingBottomCenter',
     olcs.core.setHeadingUsingBottomCenter);
+
+goog.exportSymbol(
+    'olcs.core.pickOnTerrainOrEllipsoid',
+    olcs.core.pickOnTerrainOrEllipsoid);
 
 goog.exportSymbol(
     'olcs.core.pickBottomPoint',
