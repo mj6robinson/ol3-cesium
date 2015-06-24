@@ -1,7 +1,5 @@
 // Ol3-Cesium. See https://github.com/openlayers/ol3-cesium/
 // License: https://github.com/openlayers/ol3-cesium/blob/master/LICENSE
-// Version: v1.2-17-gd6c588d
-
 var CLOSURE_NO_DEPS = true;
 // Copyright 2006 The Closure Library Authors. All Rights Reserved.
 //
@@ -10504,6 +10502,590 @@ olcs.AbstractSynchronizer.prototype.removeAllCesiumObjects =
 olcs.AbstractSynchronizer.prototype.createSingleCounterpart =
     goog.abstractMethod;
 
+// Copyright 2008 The Closure Library Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS-IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+/**
+ * @fileoverview Utilities for creating functions. Loosely inspired by the
+ * java classes: http://goo.gl/GM0Hmu and http://goo.gl/6k7nI8.
+ *
+ * @author nicksantos@google.com (Nick Santos)
+ */
+
+
+goog.provide('goog.functions');
+
+
+/**
+ * Creates a function that always returns the same value.
+ * @param {T} retValue The value to return.
+ * @return {function():T} The new function.
+ * @template T
+ */
+goog.functions.constant = function(retValue) {
+  return function() {
+    return retValue;
+  };
+};
+
+
+/**
+ * Always returns false.
+ * @type {function(...): boolean}
+ */
+goog.functions.FALSE = goog.functions.constant(false);
+
+
+/**
+ * Always returns true.
+ * @type {function(...): boolean}
+ */
+goog.functions.TRUE = goog.functions.constant(true);
+
+
+/**
+ * Always returns NULL.
+ * @type {function(...): null}
+ */
+goog.functions.NULL = goog.functions.constant(null);
+
+
+/**
+ * A simple function that returns the first argument of whatever is passed
+ * into it.
+ * @param {T=} opt_returnValue The single value that will be returned.
+ * @param {...*} var_args Optional trailing arguments. These are ignored.
+ * @return {T} The first argument passed in, or undefined if nothing was passed.
+ * @template T
+ */
+goog.functions.identity = function(opt_returnValue, var_args) {
+  return opt_returnValue;
+};
+
+
+/**
+ * Creates a function that always throws an error with the given message.
+ * @param {string} message The error message.
+ * @return {!Function} The error-throwing function.
+ */
+goog.functions.error = function(message) {
+  return function() {
+    throw Error(message);
+  };
+};
+
+
+/**
+ * Creates a function that throws the given object.
+ * @param {*} err An object to be thrown.
+ * @return {!Function} The error-throwing function.
+ */
+goog.functions.fail = function(err) {
+  return function() {
+    throw err;
+  }
+};
+
+
+/**
+ * Given a function, create a function that keeps opt_numArgs arguments and
+ * silently discards all additional arguments.
+ * @param {Function} f The original function.
+ * @param {number=} opt_numArgs The number of arguments to keep. Defaults to 0.
+ * @return {!Function} A version of f that only keeps the first opt_numArgs
+ *     arguments.
+ */
+goog.functions.lock = function(f, opt_numArgs) {
+  opt_numArgs = opt_numArgs || 0;
+  return function() {
+    return f.apply(this, Array.prototype.slice.call(arguments, 0, opt_numArgs));
+  };
+};
+
+
+/**
+ * Creates a function that returns its nth argument.
+ * @param {number} n The position of the return argument.
+ * @return {!Function} A new function.
+ */
+goog.functions.nth = function(n) {
+  return function() {
+    return arguments[n];
+  };
+};
+
+
+/**
+ * Given a function, create a new function that swallows its return value
+ * and replaces it with a new one.
+ * @param {Function} f A function.
+ * @param {T} retValue A new return value.
+ * @return {function(...[?]):T} A new function.
+ * @template T
+ */
+goog.functions.withReturnValue = function(f, retValue) {
+  return goog.functions.sequence(f, goog.functions.constant(retValue));
+};
+
+
+/**
+ * Creates the composition of the functions passed in.
+ * For example, (goog.functions.compose(f, g))(a) is equivalent to f(g(a)).
+ * @param {function(...[?]):T} fn The final function.
+ * @param {...Function} var_args A list of functions.
+ * @return {function(...[?]):T} The composition of all inputs.
+ * @template T
+ */
+goog.functions.compose = function(fn, var_args) {
+  var functions = arguments;
+  var length = functions.length;
+  return function() {
+    var result;
+    if (length) {
+      result = functions[length - 1].apply(this, arguments);
+    }
+
+    for (var i = length - 2; i >= 0; i--) {
+      result = functions[i].call(this, result);
+    }
+    return result;
+  };
+};
+
+
+/**
+ * Creates a function that calls the functions passed in in sequence, and
+ * returns the value of the last function. For example,
+ * (goog.functions.sequence(f, g))(x) is equivalent to f(x),g(x).
+ * @param {...Function} var_args A list of functions.
+ * @return {!Function} A function that calls all inputs in sequence.
+ */
+goog.functions.sequence = function(var_args) {
+  var functions = arguments;
+  var length = functions.length;
+  return function() {
+    var result;
+    for (var i = 0; i < length; i++) {
+      result = functions[i].apply(this, arguments);
+    }
+    return result;
+  };
+};
+
+
+/**
+ * Creates a function that returns true if each of its components evaluates
+ * to true. The components are evaluated in order, and the evaluation will be
+ * short-circuited as soon as a function returns false.
+ * For example, (goog.functions.and(f, g))(x) is equivalent to f(x) && g(x).
+ * @param {...Function} var_args A list of functions.
+ * @return {function(...[?]):boolean} A function that ANDs its component
+ *      functions.
+ */
+goog.functions.and = function(var_args) {
+  var functions = arguments;
+  var length = functions.length;
+  return function() {
+    for (var i = 0; i < length; i++) {
+      if (!functions[i].apply(this, arguments)) {
+        return false;
+      }
+    }
+    return true;
+  };
+};
+
+
+/**
+ * Creates a function that returns true if any of its components evaluates
+ * to true. The components are evaluated in order, and the evaluation will be
+ * short-circuited as soon as a function returns true.
+ * For example, (goog.functions.or(f, g))(x) is equivalent to f(x) || g(x).
+ * @param {...Function} var_args A list of functions.
+ * @return {function(...[?]):boolean} A function that ORs its component
+ *    functions.
+ */
+goog.functions.or = function(var_args) {
+  var functions = arguments;
+  var length = functions.length;
+  return function() {
+    for (var i = 0; i < length; i++) {
+      if (functions[i].apply(this, arguments)) {
+        return true;
+      }
+    }
+    return false;
+  };
+};
+
+
+/**
+ * Creates a function that returns the Boolean opposite of a provided function.
+ * For example, (goog.functions.not(f))(x) is equivalent to !f(x).
+ * @param {!Function} f The original function.
+ * @return {function(...[?]):boolean} A function that delegates to f and returns
+ * opposite.
+ */
+goog.functions.not = function(f) {
+  return function() {
+    return !f.apply(this, arguments);
+  };
+};
+
+
+/**
+ * Generic factory function to construct an object given the constructor
+ * and the arguments. Intended to be bound to create object factories.
+ *
+ * Callers should cast the result to the appropriate type for proper type
+ * checking by the compiler.
+ * @param {!Function} constructor The constructor for the Object.
+ * @param {...*} var_args The arguments to be passed to the constructor.
+ * @return {!Object} A new instance of the class given in {@code constructor}.
+ */
+goog.functions.create = function(constructor, var_args) {
+  /**
+ * @constructor
+ * @final
+ */
+  var temp = function() {};
+  temp.prototype = constructor.prototype;
+
+  // obj will have constructor's prototype in its chain and
+  // 'obj instanceof constructor' will be true.
+  var obj = new temp();
+
+  // obj is initialized by constructor.
+  // arguments is only array-like so lacks shift(), but can be used with
+  // the Array prototype function.
+  constructor.apply(obj, Array.prototype.slice.call(arguments, 1));
+  return obj;
+};
+
+
+/**
+ * @define {boolean} Whether the return value cache should be used.
+ *    This should only be used to disable caches when testing.
+ */
+goog.define('goog.functions.CACHE_RETURN_VALUE', true);
+
+
+/**
+ * Gives a wrapper function that caches the return value of a parameterless
+ * function when first called.
+ *
+ * When called for the first time, the given function is called and its
+ * return value is cached (thus this is only appropriate for idempotent
+ * functions).  Subsequent calls will return the cached return value. This
+ * allows the evaluation of expensive functions to be delayed until first used.
+ *
+ * To cache the return values of functions with parameters, see goog.memoize.
+ *
+ * @param {!function():T} fn A function to lazily evaluate.
+ * @return {!function():T} A wrapped version the function.
+ * @template T
+ */
+goog.functions.cacheReturnValue = function(fn) {
+  var called = false;
+  var value;
+
+  return function() {
+    if (!goog.functions.CACHE_RETURN_VALUE) {
+      return fn();
+    }
+
+    if (!called) {
+      value = fn();
+      called = true;
+    }
+
+    return value;
+  }
+};
+
+// Copyright 2012 The Closure Library Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS-IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+/**
+ * @fileoverview A delayed callback that pegs to the next animation frame
+ * instead of a user-configurable timeout.
+ *
+ */
+
+goog.provide('goog.async.AnimationDelay');
+
+goog.require('goog.Disposable');
+goog.require('goog.events');
+goog.require('goog.functions');
+
+
+
+// TODO(nicksantos): Should we factor out the common code between this and
+// goog.async.Delay? I'm not sure if there's enough code for this to really
+// make sense. Subclassing seems like the wrong approach for a variety of
+// reasons. Maybe there should be a common interface?
+
+
+
+/**
+ * A delayed callback that pegs to the next animation frame
+ * instead of a user configurable timeout. By design, this should have
+ * the same interface as goog.async.Delay.
+ *
+ * Uses requestAnimationFrame and friends when available, but falls
+ * back to a timeout of goog.async.AnimationDelay.TIMEOUT.
+ *
+ * For more on requestAnimationFrame and how you can use it to create smoother
+ * animations, see:
+ * @see http://paulirish.com/2011/requestanimationframe-for-smart-animating/
+ *
+ * @param {function(number)} listener Function to call when the delay completes.
+ *     Will be passed the timestamp when it's called, in unix ms.
+ * @param {Window=} opt_window The window object to execute the delay in.
+ *     Defaults to the global object.
+ * @param {Object=} opt_handler The object scope to invoke the function in.
+ * @constructor
+ * @extends {goog.Disposable}
+ * @final
+ */
+goog.async.AnimationDelay = function(listener, opt_window, opt_handler) {
+  goog.async.AnimationDelay.base(this, 'constructor');
+
+  /**
+   * The function that will be invoked after a delay.
+   * @type {function(number)}
+   * @private
+   */
+  this.listener_ = listener;
+
+  /**
+   * The object context to invoke the callback in.
+   * @type {Object|undefined}
+   * @private
+   */
+  this.handler_ = opt_handler;
+
+  /**
+   * @type {Window}
+   * @private
+   */
+  this.win_ = opt_window || window;
+
+  /**
+   * Cached callback function invoked when the delay finishes.
+   * @type {function()}
+   * @private
+   */
+  this.callback_ = goog.bind(this.doAction_, this);
+};
+goog.inherits(goog.async.AnimationDelay, goog.Disposable);
+
+
+/**
+ * Identifier of the active delay timeout, or event listener,
+ * or null when inactive.
+ * @type {goog.events.Key|number|null}
+ * @private
+ */
+goog.async.AnimationDelay.prototype.id_ = null;
+
+
+/**
+ * If we're using dom listeners.
+ * @type {?boolean}
+ * @private
+ */
+goog.async.AnimationDelay.prototype.usingListeners_ = false;
+
+
+/**
+ * Default wait timeout for animations (in milliseconds).  Only used for timed
+ * animation, which uses a timer (setTimeout) to schedule animation.
+ *
+ * @type {number}
+ * @const
+ */
+goog.async.AnimationDelay.TIMEOUT = 20;
+
+
+/**
+ * Name of event received from the requestAnimationFrame in Firefox.
+ *
+ * @type {string}
+ * @const
+ * @private
+ */
+goog.async.AnimationDelay.MOZ_BEFORE_PAINT_EVENT_ = 'MozBeforePaint';
+
+
+/**
+ * Starts the delay timer. The provided listener function will be called
+ * before the next animation frame.
+ */
+goog.async.AnimationDelay.prototype.start = function() {
+  this.stop();
+  this.usingListeners_ = false;
+
+  var raf = this.getRaf_();
+  var cancelRaf = this.getCancelRaf_();
+  if (raf && !cancelRaf && this.win_.mozRequestAnimationFrame) {
+    // Because Firefox (Gecko) runs animation in separate threads, it also saves
+    // time by running the requestAnimationFrame callbacks in that same thread.
+    // Sadly this breaks the assumption of implicit thread-safety in JS, and can
+    // thus create thread-based inconsistencies on counters etc.
+    //
+    // Calling cycleAnimations_ using the MozBeforePaint event instead of as
+    // callback fixes this.
+    //
+    // Trigger this condition only if the mozRequestAnimationFrame is available,
+    // but not the W3C requestAnimationFrame function (as in draft) or the
+    // equivalent cancel functions.
+    this.id_ = goog.events.listen(
+        this.win_,
+        goog.async.AnimationDelay.MOZ_BEFORE_PAINT_EVENT_,
+        this.callback_);
+    this.win_.mozRequestAnimationFrame(null);
+    this.usingListeners_ = true;
+  } else if (raf && cancelRaf) {
+    this.id_ = raf.call(this.win_, this.callback_);
+  } else {
+    this.id_ = this.win_.setTimeout(
+        // Prior to Firefox 13, Gecko passed a non-standard parameter
+        // to the callback that we want to ignore.
+        goog.functions.lock(this.callback_),
+        goog.async.AnimationDelay.TIMEOUT);
+  }
+};
+
+
+/**
+ * Stops the delay timer if it is active. No action is taken if the timer is not
+ * in use.
+ */
+goog.async.AnimationDelay.prototype.stop = function() {
+  if (this.isActive()) {
+    var raf = this.getRaf_();
+    var cancelRaf = this.getCancelRaf_();
+    if (raf && !cancelRaf && this.win_.mozRequestAnimationFrame) {
+      goog.events.unlistenByKey(this.id_);
+    } else if (raf && cancelRaf) {
+      cancelRaf.call(this.win_, /** @type {number} */ (this.id_));
+    } else {
+      this.win_.clearTimeout(/** @type {number} */ (this.id_));
+    }
+  }
+  this.id_ = null;
+};
+
+
+/**
+ * Fires delay's action even if timer has already gone off or has not been
+ * started yet; guarantees action firing. Stops the delay timer.
+ */
+goog.async.AnimationDelay.prototype.fire = function() {
+  this.stop();
+  this.doAction_();
+};
+
+
+/**
+ * Fires delay's action only if timer is currently active. Stops the delay
+ * timer.
+ */
+goog.async.AnimationDelay.prototype.fireIfActive = function() {
+  if (this.isActive()) {
+    this.fire();
+  }
+};
+
+
+/**
+ * @return {boolean} True if the delay is currently active, false otherwise.
+ */
+goog.async.AnimationDelay.prototype.isActive = function() {
+  return this.id_ != null;
+};
+
+
+/**
+ * Invokes the callback function after the delay successfully completes.
+ * @private
+ */
+goog.async.AnimationDelay.prototype.doAction_ = function() {
+  if (this.usingListeners_ && this.id_) {
+    goog.events.unlistenByKey(this.id_);
+  }
+  this.id_ = null;
+
+  // We are not using the timestamp returned by requestAnimationFrame
+  // because it may be either a Date.now-style time or a
+  // high-resolution time (depending on browser implementation). Using
+  // goog.now() will ensure that the timestamp used is consistent and
+  // compatible with goog.fx.Animation.
+  this.listener_.call(this.handler_, goog.now());
+};
+
+
+/** @override */
+goog.async.AnimationDelay.prototype.disposeInternal = function() {
+  this.stop();
+  goog.async.AnimationDelay.base(this, 'disposeInternal');
+};
+
+
+/**
+ * @return {?function(function(number)): number} The requestAnimationFrame
+ *     function, or null if not available on this browser.
+ * @private
+ */
+goog.async.AnimationDelay.prototype.getRaf_ = function() {
+  var win = this.win_;
+  return win.requestAnimationFrame ||
+      win.webkitRequestAnimationFrame ||
+      win.mozRequestAnimationFrame ||
+      win.oRequestAnimationFrame ||
+      win.msRequestAnimationFrame ||
+      null;
+};
+
+
+/**
+ * @return {?function(number): number} The cancelAnimationFrame function,
+ *     or null if not available on this browser.
+ * @private
+ */
+goog.async.AnimationDelay.prototype.getCancelRaf_ = function() {
+  var win = this.win_;
+  return win.cancelRequestAnimationFrame ||
+      win.webkitCancelRequestAnimationFrame ||
+      win.mozCancelRequestAnimationFrame ||
+      win.oCancelRequestAnimationFrame ||
+      win.msCancelRequestAnimationFrame ||
+      null;
+};
+
 goog.provide('olcs.core.OLImageryProvider');
 
 goog.require('goog.events');
@@ -10795,6 +11377,7 @@ goog.provide('olcs.core');
 
 goog.require('goog.array');
 goog.require('goog.asserts');
+goog.require('goog.async.AnimationDelay');
 goog.require('ol.extent');
 goog.require('ol.geom.SimpleGeometry');
 goog.require('ol.layer.Tile');
@@ -11586,12 +12169,10 @@ goog.require('olcs.core.OlLayerPrimitive');
       perPositionHeight: true
     });
 
-    var width = extractLineWidthFromOlStyle(olStyle);
     var outlineGeometry = new Cesium.PolygonOutlineGeometry({
       // always update Cesium externs before adding a property
       polygonHierarchy: hierarchy,
-      perPositionHeight: true,
-      width: width
+      perPositionHeight: true
     });
 
     var primitives = wrapFillAndOutlineGeometries(
@@ -13177,590 +13758,6 @@ olcs.DragBox.prototype.setScene = function(scene) {
  * @api
  */
 olcs.DragBox.prototype.listen;
-
-// Copyright 2008 The Closure Library Authors. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS-IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * @fileoverview Utilities for creating functions. Loosely inspired by the
- * java classes: http://goo.gl/GM0Hmu and http://goo.gl/6k7nI8.
- *
- * @author nicksantos@google.com (Nick Santos)
- */
-
-
-goog.provide('goog.functions');
-
-
-/**
- * Creates a function that always returns the same value.
- * @param {T} retValue The value to return.
- * @return {function():T} The new function.
- * @template T
- */
-goog.functions.constant = function(retValue) {
-  return function() {
-    return retValue;
-  };
-};
-
-
-/**
- * Always returns false.
- * @type {function(...): boolean}
- */
-goog.functions.FALSE = goog.functions.constant(false);
-
-
-/**
- * Always returns true.
- * @type {function(...): boolean}
- */
-goog.functions.TRUE = goog.functions.constant(true);
-
-
-/**
- * Always returns NULL.
- * @type {function(...): null}
- */
-goog.functions.NULL = goog.functions.constant(null);
-
-
-/**
- * A simple function that returns the first argument of whatever is passed
- * into it.
- * @param {T=} opt_returnValue The single value that will be returned.
- * @param {...*} var_args Optional trailing arguments. These are ignored.
- * @return {T} The first argument passed in, or undefined if nothing was passed.
- * @template T
- */
-goog.functions.identity = function(opt_returnValue, var_args) {
-  return opt_returnValue;
-};
-
-
-/**
- * Creates a function that always throws an error with the given message.
- * @param {string} message The error message.
- * @return {!Function} The error-throwing function.
- */
-goog.functions.error = function(message) {
-  return function() {
-    throw Error(message);
-  };
-};
-
-
-/**
- * Creates a function that throws the given object.
- * @param {*} err An object to be thrown.
- * @return {!Function} The error-throwing function.
- */
-goog.functions.fail = function(err) {
-  return function() {
-    throw err;
-  }
-};
-
-
-/**
- * Given a function, create a function that keeps opt_numArgs arguments and
- * silently discards all additional arguments.
- * @param {Function} f The original function.
- * @param {number=} opt_numArgs The number of arguments to keep. Defaults to 0.
- * @return {!Function} A version of f that only keeps the first opt_numArgs
- *     arguments.
- */
-goog.functions.lock = function(f, opt_numArgs) {
-  opt_numArgs = opt_numArgs || 0;
-  return function() {
-    return f.apply(this, Array.prototype.slice.call(arguments, 0, opt_numArgs));
-  };
-};
-
-
-/**
- * Creates a function that returns its nth argument.
- * @param {number} n The position of the return argument.
- * @return {!Function} A new function.
- */
-goog.functions.nth = function(n) {
-  return function() {
-    return arguments[n];
-  };
-};
-
-
-/**
- * Given a function, create a new function that swallows its return value
- * and replaces it with a new one.
- * @param {Function} f A function.
- * @param {T} retValue A new return value.
- * @return {function(...[?]):T} A new function.
- * @template T
- */
-goog.functions.withReturnValue = function(f, retValue) {
-  return goog.functions.sequence(f, goog.functions.constant(retValue));
-};
-
-
-/**
- * Creates the composition of the functions passed in.
- * For example, (goog.functions.compose(f, g))(a) is equivalent to f(g(a)).
- * @param {function(...[?]):T} fn The final function.
- * @param {...Function} var_args A list of functions.
- * @return {function(...[?]):T} The composition of all inputs.
- * @template T
- */
-goog.functions.compose = function(fn, var_args) {
-  var functions = arguments;
-  var length = functions.length;
-  return function() {
-    var result;
-    if (length) {
-      result = functions[length - 1].apply(this, arguments);
-    }
-
-    for (var i = length - 2; i >= 0; i--) {
-      result = functions[i].call(this, result);
-    }
-    return result;
-  };
-};
-
-
-/**
- * Creates a function that calls the functions passed in in sequence, and
- * returns the value of the last function. For example,
- * (goog.functions.sequence(f, g))(x) is equivalent to f(x),g(x).
- * @param {...Function} var_args A list of functions.
- * @return {!Function} A function that calls all inputs in sequence.
- */
-goog.functions.sequence = function(var_args) {
-  var functions = arguments;
-  var length = functions.length;
-  return function() {
-    var result;
-    for (var i = 0; i < length; i++) {
-      result = functions[i].apply(this, arguments);
-    }
-    return result;
-  };
-};
-
-
-/**
- * Creates a function that returns true if each of its components evaluates
- * to true. The components are evaluated in order, and the evaluation will be
- * short-circuited as soon as a function returns false.
- * For example, (goog.functions.and(f, g))(x) is equivalent to f(x) && g(x).
- * @param {...Function} var_args A list of functions.
- * @return {function(...[?]):boolean} A function that ANDs its component
- *      functions.
- */
-goog.functions.and = function(var_args) {
-  var functions = arguments;
-  var length = functions.length;
-  return function() {
-    for (var i = 0; i < length; i++) {
-      if (!functions[i].apply(this, arguments)) {
-        return false;
-      }
-    }
-    return true;
-  };
-};
-
-
-/**
- * Creates a function that returns true if any of its components evaluates
- * to true. The components are evaluated in order, and the evaluation will be
- * short-circuited as soon as a function returns true.
- * For example, (goog.functions.or(f, g))(x) is equivalent to f(x) || g(x).
- * @param {...Function} var_args A list of functions.
- * @return {function(...[?]):boolean} A function that ORs its component
- *    functions.
- */
-goog.functions.or = function(var_args) {
-  var functions = arguments;
-  var length = functions.length;
-  return function() {
-    for (var i = 0; i < length; i++) {
-      if (functions[i].apply(this, arguments)) {
-        return true;
-      }
-    }
-    return false;
-  };
-};
-
-
-/**
- * Creates a function that returns the Boolean opposite of a provided function.
- * For example, (goog.functions.not(f))(x) is equivalent to !f(x).
- * @param {!Function} f The original function.
- * @return {function(...[?]):boolean} A function that delegates to f and returns
- * opposite.
- */
-goog.functions.not = function(f) {
-  return function() {
-    return !f.apply(this, arguments);
-  };
-};
-
-
-/**
- * Generic factory function to construct an object given the constructor
- * and the arguments. Intended to be bound to create object factories.
- *
- * Callers should cast the result to the appropriate type for proper type
- * checking by the compiler.
- * @param {!Function} constructor The constructor for the Object.
- * @param {...*} var_args The arguments to be passed to the constructor.
- * @return {!Object} A new instance of the class given in {@code constructor}.
- */
-goog.functions.create = function(constructor, var_args) {
-  /**
- * @constructor
- * @final
- */
-  var temp = function() {};
-  temp.prototype = constructor.prototype;
-
-  // obj will have constructor's prototype in its chain and
-  // 'obj instanceof constructor' will be true.
-  var obj = new temp();
-
-  // obj is initialized by constructor.
-  // arguments is only array-like so lacks shift(), but can be used with
-  // the Array prototype function.
-  constructor.apply(obj, Array.prototype.slice.call(arguments, 1));
-  return obj;
-};
-
-
-/**
- * @define {boolean} Whether the return value cache should be used.
- *    This should only be used to disable caches when testing.
- */
-goog.define('goog.functions.CACHE_RETURN_VALUE', true);
-
-
-/**
- * Gives a wrapper function that caches the return value of a parameterless
- * function when first called.
- *
- * When called for the first time, the given function is called and its
- * return value is cached (thus this is only appropriate for idempotent
- * functions).  Subsequent calls will return the cached return value. This
- * allows the evaluation of expensive functions to be delayed until first used.
- *
- * To cache the return values of functions with parameters, see goog.memoize.
- *
- * @param {!function():T} fn A function to lazily evaluate.
- * @return {!function():T} A wrapped version the function.
- * @template T
- */
-goog.functions.cacheReturnValue = function(fn) {
-  var called = false;
-  var value;
-
-  return function() {
-    if (!goog.functions.CACHE_RETURN_VALUE) {
-      return fn();
-    }
-
-    if (!called) {
-      value = fn();
-      called = true;
-    }
-
-    return value;
-  }
-};
-
-// Copyright 2012 The Closure Library Authors. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS-IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * @fileoverview A delayed callback that pegs to the next animation frame
- * instead of a user-configurable timeout.
- *
- */
-
-goog.provide('goog.async.AnimationDelay');
-
-goog.require('goog.Disposable');
-goog.require('goog.events');
-goog.require('goog.functions');
-
-
-
-// TODO(nicksantos): Should we factor out the common code between this and
-// goog.async.Delay? I'm not sure if there's enough code for this to really
-// make sense. Subclassing seems like the wrong approach for a variety of
-// reasons. Maybe there should be a common interface?
-
-
-
-/**
- * A delayed callback that pegs to the next animation frame
- * instead of a user configurable timeout. By design, this should have
- * the same interface as goog.async.Delay.
- *
- * Uses requestAnimationFrame and friends when available, but falls
- * back to a timeout of goog.async.AnimationDelay.TIMEOUT.
- *
- * For more on requestAnimationFrame and how you can use it to create smoother
- * animations, see:
- * @see http://paulirish.com/2011/requestanimationframe-for-smart-animating/
- *
- * @param {function(number)} listener Function to call when the delay completes.
- *     Will be passed the timestamp when it's called, in unix ms.
- * @param {Window=} opt_window The window object to execute the delay in.
- *     Defaults to the global object.
- * @param {Object=} opt_handler The object scope to invoke the function in.
- * @constructor
- * @extends {goog.Disposable}
- * @final
- */
-goog.async.AnimationDelay = function(listener, opt_window, opt_handler) {
-  goog.async.AnimationDelay.base(this, 'constructor');
-
-  /**
-   * The function that will be invoked after a delay.
-   * @type {function(number)}
-   * @private
-   */
-  this.listener_ = listener;
-
-  /**
-   * The object context to invoke the callback in.
-   * @type {Object|undefined}
-   * @private
-   */
-  this.handler_ = opt_handler;
-
-  /**
-   * @type {Window}
-   * @private
-   */
-  this.win_ = opt_window || window;
-
-  /**
-   * Cached callback function invoked when the delay finishes.
-   * @type {function()}
-   * @private
-   */
-  this.callback_ = goog.bind(this.doAction_, this);
-};
-goog.inherits(goog.async.AnimationDelay, goog.Disposable);
-
-
-/**
- * Identifier of the active delay timeout, or event listener,
- * or null when inactive.
- * @type {goog.events.Key|number|null}
- * @private
- */
-goog.async.AnimationDelay.prototype.id_ = null;
-
-
-/**
- * If we're using dom listeners.
- * @type {?boolean}
- * @private
- */
-goog.async.AnimationDelay.prototype.usingListeners_ = false;
-
-
-/**
- * Default wait timeout for animations (in milliseconds).  Only used for timed
- * animation, which uses a timer (setTimeout) to schedule animation.
- *
- * @type {number}
- * @const
- */
-goog.async.AnimationDelay.TIMEOUT = 20;
-
-
-/**
- * Name of event received from the requestAnimationFrame in Firefox.
- *
- * @type {string}
- * @const
- * @private
- */
-goog.async.AnimationDelay.MOZ_BEFORE_PAINT_EVENT_ = 'MozBeforePaint';
-
-
-/**
- * Starts the delay timer. The provided listener function will be called
- * before the next animation frame.
- */
-goog.async.AnimationDelay.prototype.start = function() {
-  this.stop();
-  this.usingListeners_ = false;
-
-  var raf = this.getRaf_();
-  var cancelRaf = this.getCancelRaf_();
-  if (raf && !cancelRaf && this.win_.mozRequestAnimationFrame) {
-    // Because Firefox (Gecko) runs animation in separate threads, it also saves
-    // time by running the requestAnimationFrame callbacks in that same thread.
-    // Sadly this breaks the assumption of implicit thread-safety in JS, and can
-    // thus create thread-based inconsistencies on counters etc.
-    //
-    // Calling cycleAnimations_ using the MozBeforePaint event instead of as
-    // callback fixes this.
-    //
-    // Trigger this condition only if the mozRequestAnimationFrame is available,
-    // but not the W3C requestAnimationFrame function (as in draft) or the
-    // equivalent cancel functions.
-    this.id_ = goog.events.listen(
-        this.win_,
-        goog.async.AnimationDelay.MOZ_BEFORE_PAINT_EVENT_,
-        this.callback_);
-    this.win_.mozRequestAnimationFrame(null);
-    this.usingListeners_ = true;
-  } else if (raf && cancelRaf) {
-    this.id_ = raf.call(this.win_, this.callback_);
-  } else {
-    this.id_ = this.win_.setTimeout(
-        // Prior to Firefox 13, Gecko passed a non-standard parameter
-        // to the callback that we want to ignore.
-        goog.functions.lock(this.callback_),
-        goog.async.AnimationDelay.TIMEOUT);
-  }
-};
-
-
-/**
- * Stops the delay timer if it is active. No action is taken if the timer is not
- * in use.
- */
-goog.async.AnimationDelay.prototype.stop = function() {
-  if (this.isActive()) {
-    var raf = this.getRaf_();
-    var cancelRaf = this.getCancelRaf_();
-    if (raf && !cancelRaf && this.win_.mozRequestAnimationFrame) {
-      goog.events.unlistenByKey(this.id_);
-    } else if (raf && cancelRaf) {
-      cancelRaf.call(this.win_, /** @type {number} */ (this.id_));
-    } else {
-      this.win_.clearTimeout(/** @type {number} */ (this.id_));
-    }
-  }
-  this.id_ = null;
-};
-
-
-/**
- * Fires delay's action even if timer has already gone off or has not been
- * started yet; guarantees action firing. Stops the delay timer.
- */
-goog.async.AnimationDelay.prototype.fire = function() {
-  this.stop();
-  this.doAction_();
-};
-
-
-/**
- * Fires delay's action only if timer is currently active. Stops the delay
- * timer.
- */
-goog.async.AnimationDelay.prototype.fireIfActive = function() {
-  if (this.isActive()) {
-    this.fire();
-  }
-};
-
-
-/**
- * @return {boolean} True if the delay is currently active, false otherwise.
- */
-goog.async.AnimationDelay.prototype.isActive = function() {
-  return this.id_ != null;
-};
-
-
-/**
- * Invokes the callback function after the delay successfully completes.
- * @private
- */
-goog.async.AnimationDelay.prototype.doAction_ = function() {
-  if (this.usingListeners_ && this.id_) {
-    goog.events.unlistenByKey(this.id_);
-  }
-  this.id_ = null;
-
-  // We are not using the timestamp returned by requestAnimationFrame
-  // because it may be either a Date.now-style time or a
-  // high-resolution time (depending on browser implementation). Using
-  // goog.now() will ensure that the timestamp used is consistent and
-  // compatible with goog.fx.Animation.
-  this.listener_.call(this.handler_, goog.now());
-};
-
-
-/** @override */
-goog.async.AnimationDelay.prototype.disposeInternal = function() {
-  this.stop();
-  goog.async.AnimationDelay.base(this, 'disposeInternal');
-};
-
-
-/**
- * @return {?function(function(number)): number} The requestAnimationFrame
- *     function, or null if not available on this browser.
- * @private
- */
-goog.async.AnimationDelay.prototype.getRaf_ = function() {
-  var win = this.win_;
-  return win.requestAnimationFrame ||
-      win.webkitRequestAnimationFrame ||
-      win.mozRequestAnimationFrame ||
-      win.oRequestAnimationFrame ||
-      win.msRequestAnimationFrame ||
-      null;
-};
-
-
-/**
- * @return {?function(number): number} The cancelAnimationFrame function,
- *     or null if not available on this browser.
- * @private
- */
-goog.async.AnimationDelay.prototype.getCancelRaf_ = function() {
-  var win = this.win_;
-  return win.cancelRequestAnimationFrame ||
-      win.webkitCancelRequestAnimationFrame ||
-      win.mozCancelRequestAnimationFrame ||
-      win.oCancelRequestAnimationFrame ||
-      win.msCancelRequestAnimationFrame ||
-      null;
-};
 
 // Copyright 2010 The Closure Library Authors. All Rights Reserved.
 //
@@ -18080,6 +18077,7 @@ goog.require('olcs.core');
  * @param {!Cesium.Scene} scene
  * @constructor
  * @extends {olcs.AbstractSynchronizer.<Cesium.ImageryLayer>}
+ * @api
  */
 olcs.RasterSynchronizer = function(map, scene) {
   /**
@@ -19957,6 +19955,7 @@ goog.require('olcs.Camera');
 goog.require('olcs.DragBox');
 goog.require('olcs.DragBoxEventType');
 goog.require('olcs.OLCesium');
+goog.require('olcs.RasterSynchronizer');
 goog.require('olcs.VectorSynchronizer');
 goog.require('olcs.core');
 goog.require('olcs.core.OlLayerPrimitive');
@@ -20192,6 +20191,10 @@ goog.exportProperty(
     olcs.OLCesium.prototype,
     'warmUp',
     olcs.OLCesium.prototype.warmUp);
+
+goog.exportSymbol(
+    'olcs.RasterSynchronizer',
+    olcs.RasterSynchronizer);
 
 goog.exportSymbol(
     'olcs.VectorSynchronizer',
