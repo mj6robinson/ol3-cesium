@@ -1,3 +1,7 @@
+// Ol3-Cesium. See https://github.com/openlayers/ol3-cesium/
+// License: https://github.com/openlayers/ol3-cesium/blob/master/LICENSE
+// Version: v1.2
+
 var CLOSURE_NO_DEPS = true;
 // Copyright 2006 The Closure Library Authors. All Rights Reserved.
 //
@@ -11438,6 +11442,7 @@ goog.require('olcs.core.OlLayerPrimitive');
       // always update Cesium externs before adding a property
       center: center,
       radius: radius,
+      extrudedHeight: height,
       height: height
     });
 
@@ -11878,6 +11883,11 @@ goog.require('olcs.core.OlLayerPrimitive');
   olcs.core.olFeatureToCesium = function(feature, style, context, opt_geom) {
     var geom = opt_geom || feature.getGeometry();
     var proj = context.projection;
+    if (!geom) {
+      // Ol3 features may not have a geometry
+      // See http://geojson.org/geojson-spec.html#feature-objects
+      return null;
+    }
 
     var id = function(object) {
       object.olFeature = feature;
@@ -12309,13 +12319,13 @@ olcs.Camera.prototype.updateCamera_ = function() {
     var height = this.scene_.globe.getHeight(carto);
     carto.height = goog.isDef(height) ? height : 0;
   }
-  this.cam_.setPositionCartographic(carto);
 
-  var rotation = this.view_.getRotation();
-  this.cam_.twistLeft(goog.isDef(rotation) ? rotation : 0);
-  if (this.tilt_) {
-    this.cam_.lookUp(this.tilt_);
-  }
+  this.cam_.setView({
+    positionCartographic: carto,
+    pitch: this.tilt_ - Cesium.Math.PI_OVER_TWO,
+    heading: -this.view_.getRotation()
+  });
+
   this.cam_.moveBackward(this.distance_);
 
   this.checkCameraChange(true);
@@ -12415,7 +12425,7 @@ olcs.Camera.prototype.updateView = function() {
   } else {
     // fallback when there is no target
     this.view_.setRotation(this.cam_.heading);
-    this.tilt_ = -this.cam_.tilt + Math.PI / 2;
+    this.tilt_ = -this.cam_.pitch + Math.PI / 2;
   }
 
   this.viewUpdateInProgress_ = false;
