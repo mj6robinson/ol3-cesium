@@ -18390,7 +18390,7 @@ olcs.OLCesium = function(options) {
    */
   this.scene_ = new Cesium.Scene({
     canvas: this.canvas_,
-    scene3DOnly: true
+    scene3DOnly: false
   });
 
   var sscc = this.scene_.screenSpaceCameraController;
